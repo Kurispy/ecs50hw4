@@ -158,6 +158,12 @@ part2:
   addl min, %edx #min
   movl %edx, %ebp
   addl csize, %ebp #max
+  movl nthreads, %esi
+  decl %esi
+  cmpl 4(%esp), %esi
+  jnz notlast
+  addl remainder, %ebp
+notlast:
   movl $0, %eax #counter
   movl $counts, %esi
   movl 4(%esp), %ebx
@@ -207,19 +213,3 @@ barrier2:
   addl $4, %esp
   
 
-
-  movl csize, %eax
-  imull 4(%esp)
-  movl %eax, %esi #esi holds start location of chunk in array
-  movl csize, %edi #edi now holds length 
-  cmpl $0, 4(%esp)
-  jnz notthread0
-  addl remainder, %edi #edi now holds length (thread 0)
-notthread0:
-  movl $0, %eax #counter
-  movl $0, %edx #min
-  movl $0, %ebp #max
-  movl array, %ecx
-  shll $2, %esi
-  addl %esi, %ecx #ecx is now the start location of the chunk
-  shrl $2, %esi
