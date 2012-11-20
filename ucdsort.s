@@ -30,12 +30,14 @@ threads:
   .long 0
   .endr
 
+
 .text
 
 .globl ucdsort
 
 ucdsort: #(int *x, int n, int nth)
-  movl 4(%esp), nthreads
+  movl 4(%esp), %eax
+  movl %eax, nthreads
   movl 12(%esp), %eax
   movl %eax, array
   #split array x into roughly equal sized chunks based on nth and assign to threads
@@ -52,7 +54,7 @@ createloop:
   shrl $2, %ebx
   pushl %ecx #pthread_t *thread
   pushl $0 #pthread_attr_t NULL
-  pushl $sort #pointer to function
+  pushl $worker #pointer to function
   pushl %ebx #argument passed to function
   call pthread_create
   addl $16, %esp
@@ -119,18 +121,18 @@ newmax:
   jmp gminmax
 
 gminmax:
-  lock cmpl %edx, min
+  cmpl %edx, min
   jl newgmin
-  lock cmpl %ebp, max
+  cmpl %ebp, max
   jg newgmax
   jmp barrier
 
 newgmin:
-  lock movl %edx, min
+  lock xchg %edx, min
   jmp barrier
 
 newgmax:
-  lock movl %ebp, max
+  lock xchg %ebp, max
   jmp barrier
 
 barrier:
@@ -144,3 +146,19 @@ part2:
   movl %eax, csize
   movl %edx, remainder
   
+
+  movl csize, %eax
+  imull 4(%esp)
+  movl %eax, %esi #esi holds start location of chunk in array
+  movl csize, %edi #edi now holds length 
+  cmpl $0, 4(%esp)
+  jnz notthread0
+  addl remainder, %edi #edi now holds length (thread 0)
+notthread0:
+  movl $0, %eax #counter
+  movl $0, %edx #min
+  movl $0, %ebp #max
+  movl array, %ecx
+  shll $2, %esi
+  addl %esi, %ecx #ecx is now the start location of the chunk
+  shrl $2, %esi
