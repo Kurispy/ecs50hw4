@@ -244,13 +244,6 @@ sumloop:
   call qsort
   addl $16, %esp
 
-  movl threads, %eax
-  movl 4(%esp), %ebx
-  pushl (%eax, %ebx, 4)
-  pushl $0
-  call pthread_join
-  addl $8, %esp 
-
 compare:
   movl 4(%esp), %ebx
   movl (%ebx), %ebx
