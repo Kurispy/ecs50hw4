@@ -1,4 +1,5 @@
 #sizeof(pthread_t) = 4
+#sizeof(pthread_barrier_t) = 20
 
 .equ MAX_THREADS, 10
 
@@ -24,6 +25,11 @@ max:
 
 range:
   .long 0
+
+counts:
+  .rept MAX_THREADS
+  .long 0
+  .endr
 
 threads:
   .rept MAX_THREADS
@@ -136,7 +142,9 @@ newgmax:
   jmp barrier
 
 barrier:
-  
+  push $barr
+  call pthread_barrier_wait
+  addl $4, %esp
 
 part2:
   movl max, %eax
@@ -145,7 +153,60 @@ part2:
   idivl nthreads
   movl %eax, csize
   movl %edx, remainder
+  imull 4(%esp)
+  movl %eax, %edx
+  addl min, %edx #min
+  movl %edx, %ebp
+  addl csize, %ebp #max
+  movl $0, %eax #counter
+  movl $counts, %esi
+  movl 4(%esp), %ebx
+p2loop:
+  movl array, %ecx
+  cmpl %edx, (%ecx, %eax, 4)
+  jg p2inc
+  cmpl %ebp, (%ecx, %eax, 4)
+  jl p2inc
+  incl (%esi, %ebx, 4)
+p2inc:
+  incl %eax
+  cmpl %ebp, %eax
+  jnz p2loop
+
+  shll $2, (%esi, %ebx, 4)
+  pushl %eax
+  pushl %ecx
+  pushl %edx
+  pushl (%esi, %ebx, 4)
+  call malloc
+  shrl $2, (%esi, %ebx, 4)
+  addl $4, %esp
+  movl %eax, %edi #edi = first element of thread array
+  popl %edx
+  popl %ecx
+  popl %eax
   
+movl $0, %eax #counter
+p2loop2:
+  movl array, %ecx
+  cmpl %edx, (%ecx, %eax, 4)
+  jg p2inc2
+  cmpl %ebp, (%ecx, %eax, 4)
+  jl p2inc2
+  movl (%ecx, %eax, 4), %ebx
+  movl %ebx, (%edi)
+p2inc2:
+  addl $4, %edi
+  incl %eax
+  cmpl %ebp, %eax
+  jnz p2loop2
+
+barrier2:
+  push $barr
+  call pthread_barrier_wait
+  addl $4, %esp
+  
+
 
   movl csize, %eax
   imull 4(%esp)
