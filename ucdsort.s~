@@ -7,6 +7,9 @@
 
 .data
 
+size:
+  .long 0
+  
 nthreads:
   .long 0
 
@@ -20,15 +23,15 @@ array:
   .long 0
 
 min:
-  .long 0
+  .long 30000
 
 max:
-  .long 0
+  .long -30000
 
 range:
   .long 0
 
-counts:
+counts: #each element holds the amount of elements of x to be called by the corresponding thread
   .rept MAX_THREADS
   .long 0
   .endr
@@ -44,17 +47,19 @@ threads:
 .globl ucdsort
 
 ucdsort: #(int *x, int n, int nth)
-  pushl $barr #initialize barrier
+  pushl 12(%esp)
   pushl $0
-  pushl 4(%esp)
+  pushl $barr #initialize barrier
   call pthread_barrier_init
   addl $12, %esp
-  movl 4(%esp), %eax
-  movl %eax, nthreads
   movl 12(%esp), %eax
+  movl %eax, nthreads
+  movl 4(%esp), %eax
   movl %eax, array
   #split array x into roughly equal sized chunks based on nth and assign to threads
   movl 8(%esp), %eax
+  movl %eax, size
+  movl $0, %edx
   idivl nthreads #standard chunk size is now in %eax, with remainder in %edx
   movl %eax, csize
   movl %edx, remainder
@@ -64,17 +69,33 @@ createloop:
   movl $threads, %ecx
   shll $2, %ebx
   addl %ebx, %ecx #&threads[i]
-  shrl $2, %ebx
-  pushl %ecx #pthread_t *thread
-  pushl $0 #pthread_attr_t NULL
-  pushl $worker #pointer to function
-  pushl %ebx #argument passed to function
+  shrl $2, %ebx  
+  pushl %ebx
+  pushl $worker
+  pushl $0
+  pushl %ecx
   call pthread_create
   addl $16, %esp
-
+  
   incl %ebx
-  cmpl 4(%esp), %ebx
+  cmpl 12(%esp), %ebx
   jnz createloop #leave loop when nth threads have been created
+  
+  #pthread_join
+  movl $0, %ebx
+  movl threads, %eax
+  
+joinloop:
+  pushl $0
+  pushl (%eax, %ebx, 4)
+  call pthread_join
+  addl $8, %esp 
+  incl %ebx
+  cmpl nthreads, %ebx
+  jnz joinloop
+  
+done:
+  movl %eax, %eax
   
   #gminmax combine results to get overall min/max
 
@@ -99,19 +120,21 @@ worker:
   cmpl $0, 4(%esp)
   jnz notthread0
   addl remainder, %edi #edi now holds length (thread 0)
+  subl remainder, %esi
 notthread0:
+  addl remainder, %esi
   movl $0, %eax #counter
-  movl $0, %edx #min
-  movl $0, %ebp #max
+  movl $30000, %edx #min
+  movl $-30000, %ebp #max
   movl array, %ecx
   shll $2, %esi
   addl %esi, %ecx #ecx is now the start location of the chunk
   shrl $2, %esi
 loop:
   movl (%ecx, %eax, 4), %ebx  #ebx holds current element
-  cmpl %ebx, %edx
+  cmpl %edx, %ebx
   jl newmin
-  cmpl %ebx, %ebp
+  cmpl %ebp, %ebx
   jg newmax
 
   incl %eax
@@ -120,9 +143,11 @@ loop:
   jmp gminmax
 
 newmin:
-  movl %ebx, %edx
+  movl %ebx, %edx  
+  cmpl %ebp, %ebx
+  jg newmax
   incl %eax
-  cmpl %eax, %edi
+  cmpl %eax, %edi  
   jnz loop
   jmp gminmax
 
@@ -134,14 +159,16 @@ newmax:
   jmp gminmax
 
 gminmax:
-  cmpl %edx, min
+  cmpl min, %edx
   jl newgmin
-  cmpl %ebp, max
+  cmpl max, %ebp
   jg newgmax
   jmp barrier
 
 newgmin:
   lock xchg %edx, min
+  cmpl max, %ebp
+  jg newgmax
   jmp barrier
 
 newgmax:
@@ -157,6 +184,7 @@ part2:
   movl max, %eax
   subl min, %eax
   incl %eax #eax = range
+  movl $0, %edx
   idivl nthreads
   movl %eax, csize
   movl %edx, remainder
@@ -165,6 +193,7 @@ part2:
   addl min, %edx #min
   movl %edx, %ebp
   addl csize, %ebp #max
+  decl %ebp   #MAYBE WORK MAYBE NOT
   movl nthreads, %esi
   decl %esi
   cmpl 4(%esp), %esi
@@ -176,18 +205,18 @@ notlast:
   movl 4(%esp), %ebx
 p2loop:
   movl array, %ecx
-  cmpl %edx, (%ecx, %eax, 4)
+  cmpl (%ecx, %eax, 4), %edx
   jg p2inc
-  cmpl %ebp, (%ecx, %eax, 4)
+  cmpl (%ecx, %eax, 4), %ebp
   jl p2inc
   incl (%esi, %ebx, 4)
 p2inc:
   incl %eax
-  cmpl %ebp, %eax
+  cmpl size, %eax
   jnz p2loop
-
-  shll $2, (%esi, %ebx, 4)
-  pushl %eax
+  
+  shll $2, (%esi, %ebx, 4)  
+  pushl %eax  
   pushl %ecx
   pushl %edx
   pushl (%esi, %ebx, 4)
@@ -200,19 +229,19 @@ p2inc:
   popl %eax
   movl %edi, %esi #esi = first element of thread array
   
-movl $0, %eax #counter
+  movl $0, %eax #counter
 p2loop2:
   movl array, %ecx
-  cmpl %edx, (%ecx, %eax, 4)
+  cmpl (%ecx, %eax, 4), %edx
   jg p2inc2
-  cmpl %ebp, (%ecx, %eax, 4)
+  cmpl (%ecx, %eax, 4), %ebp
   jl p2inc2
   movl (%ecx, %eax, 4), %ebx
   movl %ebx, (%edi)
-p2inc2:
   addl $4, %edi
+p2inc2:
   incl %eax
-  cmpl %ebp, %eax
+  cmpl size, %eax
   jnz p2loop2
 
 barrier2:
@@ -221,33 +250,48 @@ barrier2:
   addl $4, %esp
 
   movl array, %edx
-  movl counts, %ebx
-  movl $0, %eax
+  movl $counts, %ebx
+  movl $-1, %eax
+  movl $0, %ebp
 sumloop:
+  incl %eax
   addl (%ebx, %eax, 4), %ebp
   cmpl 4(%esp), %eax
-  incl %eax
   jnz sumloop
-  decl %eax
   subl (%ebx, %eax, 4), %ebp
   #ebp is now destination location in x
 
   movl (%ebx, %eax, 4), %ecx #ecx = number of elements to move
-  movl (%edx, %ebp, 4), %edi #edi = location in x to copy
+  shll $2, %ebp
+  addl %ebp, %edx
+  movl %edx, %edi #edi = location in x to copy
+  shrl $2, %ebp
   #esi already set to location of thread specific array
-  rep movsl
-  
   pushl %edi
-  pushl (%ebx, %eax, 4)
-  pushl $4
+  rep movsl #esi->edi and increment edi by 1 word
+  popl %edi
+  
   pushl $compare
+  pushl $4
+  pushl (%ebx, %eax, 4)
+  pushl %edi
   call qsort
   addl $16, %esp
 
+barrier3:
+  push $barr
+  call pthread_barrier_wait
+  addl $4, %esp
+  
+#exit thread!!!!
+ pushl $0
+ call pthread_exit
+ addl $4, %esp 
+  
 compare:
-  movl 4(%esp), %ebx
+  movl 8(%esp), %ebx
   movl (%ebx), %ebx
-  movl 8(%esp), %eax
+  movl 4(%esp), %eax
   movl (%eax), %eax
   subl %ebx, %eax
-  
+  ret

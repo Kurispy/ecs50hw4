@@ -76,13 +76,21 @@ createloop:
   pushl %ecx
   call pthread_create
   addl $16, %esp
-
+  
   incl %ebx
   cmpl 12(%esp), %ebx
   jnz createloop #leave loop when nth threads have been created
   
-lol:
-  jmp lol
+  #pthread_join
+  movl $0, %ebx
+  movl threads, %eax
+  pushl $0
+  pushl (%eax, %ebx, 4)
+  call pthread_join
+  addl $8, %esp 
+  
+done:
+  movl %eax, %eax
   
   #gminmax combine results to get overall min/max
 
@@ -245,7 +253,6 @@ sumloop:
   addl (%ebx, %eax, 4), %ebp
   cmpl 4(%esp), %eax
   jnz sumloop
-  decl %eax
   subl (%ebx, %eax, 4), %ebp
   #ebp is now destination location in x
 
@@ -255,7 +262,9 @@ sumloop:
   movl %edx, %edi #edi = location in x to copy
   shrl $2, %ebp
   #esi already set to location of thread specific array
-  rep movsl 
+  pushl %edi
+  rep movsl #esi->edi and increment edi by 1 word
+  popl %edi
   
   pushl $compare
   pushl $4
@@ -264,23 +273,20 @@ sumloop:
   call qsort
   addl $16, %esp
 
-  movl threads, %eax
-  movl 4(%esp), %ebx  
-  pushl $0
-  pushl (%eax, %ebx, 4)
-  call pthread_join
-  addl $8, %esp 
-
 barrier3:
   push $barr
   call pthread_barrier_wait
   addl $4, %esp
-
+  
+#exit thread!!!!
+ pushl $0
+ call pthread_exit
+ addl $4, %esp 
   
 compare:
-  movl 4(%esp), %ebx
+  movl 8(%esp), %ebx
   movl (%ebx), %ebx
-  movl 8(%esp), %eax
+  movl 4(%esp), %eax
   movl (%eax), %eax
   subl %ebx, %eax
-  
+  ret
