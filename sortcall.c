@@ -13,7 +13,9 @@ int main(void)
      x[i]=rand()%30000+1;
    }
 	
+   for (i = 0; i < 100; i++)
 	ucdsort(x, 1000, 7);
+
 	
 	return 0;
 }

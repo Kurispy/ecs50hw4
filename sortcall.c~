@@ -7,13 +7,21 @@ extern void ucdsort(int *x, int n, int nth);
 
 int main(void)
 {
-   int x[1000];
-   for(int i=0; i<1000; i++)
+   int x[100], i;
+   for(i=0; i<100; i++)
    {
      x[i]=rand()%30000+1;
    }
+
+   int y[100];
+   for(i=0; i<100; i++)
+   {
+     y[i]=rand()%30000+1;
+   }
 	
-	ucdsort(x, 1000, 7);
+	
+	ucdsort(x, 100, 7);
+	ucdsort(y, 100, 7);
 	
 	return 0;
 }

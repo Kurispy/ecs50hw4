@@ -23,10 +23,10 @@ array:
   .long 0
 
 min:
-  .long 30000
+  .long 0
 
 max:
-  .long -30000
+  .long 0
 
 range:
   .long 0
@@ -47,17 +47,23 @@ threads:
 .globl ucdsort
 
 ucdsort: #(int *x, int n, int nth)
-  pushl 12(%esp)
+  pushl %ebp
+  movl %esp, %ebp
+  pushl %ebx
+  pushl %esi
+  pushl %edi
+
+  pushl 28(%esp)
   pushl $0
   pushl $barr #initialize barrier
   call pthread_barrier_init
   addl $12, %esp
-  movl 12(%esp), %eax
+  movl 28(%esp), %eax
   movl %eax, nthreads
-  movl 4(%esp), %eax
+  movl 20(%esp), %eax
   movl %eax, array
   #split array x into roughly equal sized chunks based on nth and assign to threads
-  movl 8(%esp), %eax
+  movl 24(%esp), %eax
   movl %eax, size
   movl $0, %edx
   idivl nthreads #standard chunk size is now in %eax, with remainder in %edx
@@ -78,33 +84,31 @@ createloop:
   addl $16, %esp
   
   incl %ebx
-  cmpl 12(%esp), %ebx
+  cmpl 28(%esp), %ebx
   jnz createloop #leave loop when nth threads have been created
   
   #pthread_join
   movl $0, %ebx
-  movl threads, %eax
+jloop:
+  movl $threads, %eax
   pushl $0
   pushl (%eax, %ebx, 4)
   call pthread_join
-  addl $8, %esp 
+  addl $8, %esp
+
+  incl %ebx
+  cmpl nthreads, %ebx
+  jnz jloop
+
+  push $barr
+  call pthread_barrier_destroy
+  addl $4, %esp
   
-done:
-  movl %eax, %eax
-  
-  #gminmax combine results to get overall min/max
-
-  #split range mx-mn into roughly equal sized chunks based on nth and assign to threads
-  #CRITICAL SECTION in each thread determine which elements are in its range as well as how many of
-  #them there are
-
-  #publicize the amount of elements in a global variable, and use it to determine where each of
-  #the threads will be writing their output
-
-  #sort said elements in each chunk using qsort() and store results in said locations
-
-  #???
-  #Profit
+  popl %edi
+  popl %esi
+  popl %ebx
+  leave
+  ret
 
 worker: 
   #4(%esp) = thread number
@@ -119,8 +123,9 @@ worker:
 notthread0:
   addl remainder, %esi
   movl $0, %eax #counter
-  movl $30000, %edx #min
-  movl $-30000, %ebp #max
+  movl array, %edx
+  movl (%edx), %ebp #max
+  movl (%edx), %edx #min
   movl array, %ecx
   shll $2, %esi
   addl %esi, %ecx #ecx is now the start location of the chunk
@@ -198,6 +203,7 @@ notlast:
   movl $0, %eax #counter
   movl $counts, %esi
   movl 4(%esp), %ebx
+  movl $0, (%esi, %ebx, 4)
 p2loop:
   movl array, %ecx
   cmpl (%ecx, %eax, 4), %edx
@@ -272,16 +278,11 @@ sumloop:
   pushl %edi
   call qsort
   addl $16, %esp
-
-barrier3:
-  push $barr
-  call pthread_barrier_wait
-  addl $4, %esp
   
-#exit thread!!!!
- pushl $0
- call pthread_exit
- addl $4, %esp 
+#exit thread
+  pushl $0
+  call pthread_exit
+  addl $4, %esp 
   
 compare:
   movl 8(%esp), %ebx
